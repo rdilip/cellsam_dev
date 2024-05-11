@@ -246,13 +246,16 @@ class CellSAM(nn.Module):
             scores = []
 
             for coord_idx, coord in enumerate(range(rng)):
+                if coord_idx != 0:
+                   continue 
+
                 bbox = boxes_per_heatmap[coord_idx]
                 bbox = [cen * scaling_factor for cen in bbox]
 
                 input_box = torch.as_tensor(bbox).unsqueeze(0).unsqueeze(0)
                 sparse_embeddings, dense_embeddings = self.model.prompt_encoder(
                     points=None,
-                    boxes=input_box.to(device),
+                    boxes=boxes_per_heatmap.to(device), #input_box.to(device),
                     masks=None,
                 )
 
@@ -280,29 +283,33 @@ class CellSAM(nn.Module):
                 )
 
                 low_res_masks_thresholded = (
-                    nn.Sigmoid()(low_res_masks[0, 0]) > self.mask_threshold
+                    nn.Sigmoid()(low_res_masks[:, 0]) > self.mask_threshold
                 )
 
                 low_res_masks_thresholded = low_res_masks_thresholded.numpy().astype(
                     np.uint8
                 )
 
-                res = low_res_masks[0, 0].detach().cpu().numpy()
+                res = low_res_masks[:, 0, :, :].detach().cpu().numpy()
 
-                assert res.shape == images[idx].shape[1:]
+                assert res.shape[-2 :]== images[idx].shape[1:]
                 low_masks.append(res)
-                low_res_masks_thresholded = low_res_masks_thresholded[
+                low_res_masks_thresholded = low_res_masks_thresholded[ :, 
                     : images[idx].shape[1], : images[idx].shape[2]
                 ]
                 low_masks_thresholded.append(low_res_masks_thresholded)
-                scores.append(float(iou_predictions[0][0].detach().cpu().numpy()))
+                scores.append(iou_predictions[:, 0].detach().cpu().numpy())
+
 
         if low_masks == []:
             return None
 
-        low_masks = np.stack(low_masks)
-        thresholded_masks = np.stack(low_masks_thresholded)
-        scores = np.stack(scores)
+        # low_masks = np.stack(low_masks)
+        low_masks = low_masks[0] # this does the same thing
+        # thresholded_masks = np.stack(low_masks_thresholded)
+        thresholded_masks = low_masks_thresholded[0]
+        # scores = np.stack(scores)
+        scores = scores[0]
 
 
         for mask_idx, msk in enumerate(thresholded_masks):
