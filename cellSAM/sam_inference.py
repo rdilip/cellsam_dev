@@ -293,14 +293,6 @@ class CellSAM(nn.Module):
             # low_masks_thresholded.append(low_res_masks_thresholded)
             scores = iou_predictions[:, 0].detach().cpu().numpy()
 
-
-
-        # low_masks = np.stack(low_masks)
-        # thresholded_masks = np.stack(low_masks_thresholded)
-        # thresholded_masks = low_masks_thresholded[0]
-        # scores = np.stack(scores)
-
-
         for mask_idx, msk in enumerate(thresholded_masks):
             msk = keep_largest_object(msk)
             thresholded_masks[mask_idx] = msk
