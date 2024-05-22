@@ -11,17 +11,25 @@ from dask_image.ndmeasure._utils import _label
 from sklearn import metrics as sk_metrics
 
 from .model import segment_cellular_image
+from itertools import cycle
 
-def segment_chunk(chunk, model=None, **kwargs):
+
+def segment_chunk(chunk, model=None, gpu_id=0, **kwargs):
     """ Segments an individual chunk using a specific GPU.
     Args:
         chunk (np.array): Image data to segment.
         gpu_id (int): Identifier for the GPU to use.
     """
-    mask = segment_cellular_image(chunk, model, **kwargs)[0]
+    # Correctly format the device string
+    mask = segment_cellular_image(chunk, model, device=f'cuda:{gpu_id}', **kwargs)[0]
     return mask.astype(np.int64), mask.max()
 
-def segment_wsi(image, overlap, iou_depth, iou_threshold, **segmentation_kwargs):
+
+
+def segment_wsi(image, overlap, iou_depth, iou_threshold, num_gpus=1, **segmentation_kwargs):
+    # Set up the Dask cluster with GPU workers
+    cluster = LocalCluster(n_workers=num_gpus, threads_per_worker=1, resources={'GPU': 1})
+    client = Client(cluster)
 
     if image.ndim == 2:
         image = image[..., None]
@@ -39,15 +47,17 @@ def segment_wsi(image, overlap, iou_depth, iou_threshold, **segmentation_kwargs)
             functools.partial(operator.getitem, image),
             da.core.slices_from_chunks(image.chunks),
         ),
+        cycle(range(num_gpus)),  # Distribute GPU IDs in a round-robin fashion
     )
 
     labeled_blocks = np.empty(image.numblocks[:-1], dtype=object)
     total = None
 
-    for index, input_block in block_iter:
+    for index, input_block, gpu_id in block_iter:
         labeled_block, n = dask.delayed(segment_chunk, nout=2)(
             input_block,
             model=None,
+            gpu_id=gpu_id,
             **segmentation_kwargs
         )
 
